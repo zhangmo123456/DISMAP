@@ -1,0 +1,67 @@
+
+#variable importance calculation and plot example
+library(sp)
+library(GA)
+library(lattice)
+library(rgdal)
+library(raster)
+library(maptools)
+library(shapefiles)
+library(corrplot)
+library(gstat)
+library(raster)
+library(automap)
+library(MASS)
+library(soiltexture)
+library(aqp)
+library(plyr)
+library(ithir)
+library(hydroGOF)
+library(ggplot2)
+library(ggsci)
+library(reshape2)
+library(ncdf4) 
+library(maptools) 
+library(terra)
+library(randomForest)
+library(caret)
+library(ggplot2)
+library(ggsci)
+library(reshape2)
+library(ggplot2)
+library(babynames) 
+library(dplyr)
+library(hrbrthemes)
+library(viridis)
+library(ggplot2)
+library(dplyr)
+
+df<-read.csv("varImp_20_40_new.csv")
+title<-c("(a) α-Gaussian","(b) β-Gaussian","(c) γ-Gaussian","(d) α-Inverse Gaussian",
+              "(e) β-Inverse Gaussian","(f) γ-Inverse Gaussian","(g) SMtop-Linear","(h) m-Linear")
+for(i in 1:8){
+
+df_temp<-data.frame(Variable=df$Variable,Value=df[,(i+1)],Type=df$Type)
+top_df_temp <- df_temp %>%
+  arrange(desc(Value)) %>%
+  slice(1:10)
+
+custom_colors <- c("Climate" = "#66C1A4", "Soil" = "#DAA87C","Terrain" = "#CC7979")
+name_plot_all<-letters[1:8]
+plot<-ggplot(top_df_temp, aes(x = reorder(Variable, Value), y = Value, fill = Type)) +
+  geom_bar(stat = "identity", position = position_dodge(),width = 0.7) +
+  labs(title = title[i], x = "", y = "Importance") +
+  coord_flip() +
+  theme_light()+
+  theme(legend.position = "none")+
+  scale_fill_manual(values = custom_colors)+
+  theme(axis.title = element_text(size=13,  color="black"),
+    axis.text = element_text(size=13,  color="black"),
+    legend.text = element_text(size=13,  color="black"),
+    legend.title = element_text(size=13,  color="black")) 
+name_plot<-paste(name_plot_all[i],".jpg",sep="")
+ggsave(plot=plot,name_plot,dpi = 600,width = 4,height = 3.5)
+}
+
+
+
