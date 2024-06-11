@@ -1,0 +1,35 @@
+##correlation calculation and plot example------------------------------------
+library(ggplot2)
+
+df<-read.csv("para_0_10.csv")
+sm_data<-read.csv("SM_Tibet_spline.csv")
+sm_data<-na.omit(sm_data)
+df_all<-cbind(df,sm_data)
+df_sub<-df_all[df_all$a<1&df_all$b<40&df_all$b>0,]
+sm_1cm<-df_sub$SM_1cm
+a<-df_sub$a
+df_plot<-data.frame(sm=sm_1cm,a=a)
+spearman_correlation <- cor(sm_1cm,a,method="spearman")
+r_squared <- summary(lm(sm_1cm~a))$r.squared
+
+p<-ggplot( df_plot,aes(x = sm_1cm, y =a )) +
+  geom_point(color = '#CEDBD2', alpha = 0.6,size=0.8) +
+  geom_smooth(method = "lm", color = '#F1766D', se = FALSE, linetype = "dashed") +
+  labs(title = "(a)", x = "Soil moisture (depth = 1cm)", y = "α-Gaussian") +
+  theme_light()+
+  theme(axis.title = element_text(size=13,  color="black"),
+    axis.text = element_text(size=13,  color="black"),
+    legend.text = element_text(size=13,  color="black"),
+    legend.title = element_text(size=13,  color="black")) +
+  theme(plot.title = element_text(margin = margin(b = 1))) +
+  annotate("text", x = Inf, y = -Inf, label = paste("CC: ", round(spearman_correlation, 2), "\n",
+                                                "R²: ", round(r_squared, 2),"\n"), hjust = 1, vjust = 0, size = 4)
+plot<-ggExtra::ggMarginal(
+  p, 
+  type = "density", 
+  fill = "grey", 
+  color = "black", 
+  alpha = 0.5)
+setwd("C:/Users/dell/Desktop")
+ggsave(plot=plot,"a.jpg",dpi = 600,width = 4,height = 3.5)
+
