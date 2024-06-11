@@ -1,0 +1,177 @@
+library(ggplot2)
+library(minpack.lm)
+library(hydroGOF)
+ubrmse<-function(a,b){
+(sum(((a-mean(a))-(b-mean(b)))^2)/length(a))^0.5
+}
+r2 <- function(predicted,actual) {
+  model <- lm(predicted ~ actual)
+  r_squared <- summary(model)$r.squared
+  return(r_squared)
+}
+setwd("E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/2 data/1 原位观测")
+data<-read.csv("SM_Tibet_spline.csv")
+data<-na.omit(data)
+result<-data.frame()
+
+for (i in 1: nrow(data)){#-------每个站点建模【分别使用三个函数】-----0-10 cm------
+#for (i in 1: 535){
+df<-data[i,]
+sm_data<-as.numeric(df[1:10])##------0-10cm的土壤水分---------
+df_all<-data.frame(sm=sm_data,depth=c(1:10))
+
+##（1）高斯函数----------------------------------------------------
+tell=0
+tryCatch({
+start_gas<-list(a=max(df_all$sm),
+                          b=df_all$depth[which.max(df_all$sm)],
+                          c=5)
+gas <-nlsLM(sm ~a*exp((((depth-b)*(depth-b))/(-c*c))), 
+                            data = df_all, 
+                            start = start_gas)
+      tell=1
+}, error = function(e) {
+})
+
+if(tell==1){
+para_gas<-gas$m$getPars()
+depth=df_all$depth
+a<-para_gas[1]
+b<-para_gas[2]
+c<-para_gas[3]
+pre_gas<-a*exp((((depth-b)*(depth-b))/(-c*c)))
+}
+if(tell==0){
+depth=df_all$depth
+a<-0
+b<-0
+c<-0
+pre_gas<-rep(0,length(depth))
+}
+##（2）逆高斯函数----------------------------------------------------
+
+tell=0
+tryCatch({
+start_invgas<-list(d=min(df_all$sm),
+                          e=df_all$depth[which.min(df_all$sm)],
+                          f=20)
+invgas <-nlsLM(sm ~2*d-d*exp((((depth-e)*(depth-e))/(-f*f))), 
+                            data = df_all, 
+                            start = start_invgas)
+      tell=1
+}, error = function(e) {
+})
+
+if(tell==1){
+para_invgas<-invgas$m$getPars()
+depth=df_all$depth
+d<-para_invgas[1]
+e<-para_invgas[2]
+f<-para_invgas[3]
+pre_invgas<-2*d-d*exp((((depth-e)*(depth-e))/(-f*f)))
+}
+if(tell==0){
+depth=df_all$depth
+d<-0
+e<-0
+f<-0
+pre_invgas<-rep(0,length(depth))
+}
+
+##（3）线性函数----------------------------------------------------
+
+tell=0
+tryCatch({
+start_linear<-list(f=df_all$sm[1],
+                          g=(df_all$sm[10]-df_all$sm[1])/10)
+linear <-nlsLM(sm ~f+depth*g,
+                            data = df_all, 
+                            start = start_linear)
+      tell=1
+}, error = function(e) {
+})
+
+if(tell==1){
+para_linear<-linear$m$getPars()
+depth=df_all$depth
+g<-para_linear[1]
+h<-para_linear[2]
+pre_linear<-g+depth*h
+}
+if(tell==0){
+depth=df_all$depth
+g<-0
+h<-0
+pre_linear<-rep(0,length(depth))
+}
+
+##plot-----------------------
+depth <- df_all$depth
+data_plot <- data.frame(depth,obs=sm_data,pre_gas,pre_invgas,pre_linear)
+plot<-ggplot() +
+  geom_point(data=data_plot, aes(x=obs, y=-depth), color="black", size=3, shape=19) +
+  geom_path(data=data_plot, aes(x=pre_gas, y=-depth, color="Gaussian"), size=1, linetype="dashed") +
+  geom_path(data=data_plot, aes(x=pre_invgas, y=-depth, color="Inverse Gaussian"), size=1, linetype="dashed") +
+  geom_path(data=data_plot, aes(x=pre_linear, y=-depth, color="Linear"), size=1, linetype="dashed") +
+  scale_y_continuous(labels = function(x) -x) +
+  labs(x="Soil moisture", y="Depth (cm)", title="") +
+  theme_light()+
+  theme(legend.position = "bottom",
+    axis.title = element_text(size=12, face="bold", color="black"),
+    axis.text = element_text(size=12, face="bold", color="black"),
+    legend.text = element_text(size=12, face="bold", color="black"),
+    legend.title = element_text(size=12, face="bold", color="black"),
+  ) +
+  scale_color_manual(values=c("Gaussian"="blue", "Inverse Gaussian"="red", "Linear"="green"), labels=c("Gaussian", "Inverse Gaussian", "Linear")) +
+  guides(color=guide_legend(title="Depth function"))
+  plot
+
+##记录获得的参数，计算每个函数的拟合精度RMSE和R2，以及哪个是最优的
+para_temp<-c(a,b,c,d,e,f,g,h)
+RMSE_temp<-c(rmse(pre_gas,sm_data),rmse(pre_invgas,sm_data),rmse(pre_linear,sm_data))
+R2_temp<-c(r2(pre_gas,sm_data),r2(pre_invgas,sm_data),r2(pre_linear,sm_data))
+lebel_1<-0
+lebel_2<-0
+lebel_3<-0
+if(is.na(R2_temp[1])){R2_temp[1]=0}
+if(is.na(R2_temp[2])){R2_temp[2]=0}
+if(is.na(R2_temp[3])){R2_temp[3]=0}
+
+if(R2_temp[1]>0.90){lebel_1<-1}
+if(R2_temp[2]>0.90){lebel_2<-1}
+if(R2_temp[3]>0.90){lebel_3<-1}
+lebel<-c(lebel_1,lebel_2,lebel_3)
+
+optimal_name<-"Gaussian"
+if(which.max(R2_temp)==2){optimal_name<-"Inverse Gaussian"}
+if(which.max(R2_temp)==3){optimal_name<-"Linear"}
+result<-rbind(result,c(para_temp,RMSE_temp,R2_temp,optimal_name,lebel))
+colnames(result)<-c("a","b","c","d","e","f","g","h","RMSE_gas","RMSE_invgas",
+                                   "RMSE_linear","R2_gas","R2_invgas","R2_linear",
+                                    "optimal_type","Gaussian","Inverse Gaussian", "Linear")
+if(i%%500==0){print( 100*i/nrow(data))}
+}
+#sum(result$Gaussian==1)/(sum(result$Gaussian==1)+sum(result$Exponential==1)+sum(result$Linear==1))*100
+#sum(result$Exponential==1)/(sum(result$Gaussian==1)+sum(result$Exponential==1)+sum(result$Linear==1))*100
+#sum(result$Linear==1)/(sum(result$Gaussian==1)+sum(result$Exponential==1)+sum(result$Linear==1))*100
+
+#100*sum(result$Gaussian==1)/nrow(result)
+#100*sum(result$Exponential==1)/nrow(result)
+#100*sum(result$Linear==1)/nrow(result)
+
+#hist(as.numeric(result$R2_gas))
+#hist(as.numeric(result$R2_exp))
+#hist(as.numeric(result$R2_linear))
+setwd("C:/Users/dell/Desktop")
+write.csv(result,"para_0_10.csv")
+
+
+
+
+
+
+
+
+
+
+
