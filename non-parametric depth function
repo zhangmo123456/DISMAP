@@ -1,4 +1,4 @@
-## fit using spline function
+## fit using spline function (non-parametric depth function)
 
 library(hydroGOF)
 library(aqp)
