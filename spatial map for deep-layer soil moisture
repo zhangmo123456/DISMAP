@@ -1,0 +1,125 @@
+### spatial map for deep-layer soil moisture
+library(sp)
+library(GA)
+library(lattice)
+library(rgdal)
+library(raster)
+library(maptools)
+library(shapefiles)
+library(corrplot)
+library(gstat)
+library(raster)
+library(automap)
+library(MASS)
+library(soiltexture)
+library(aqp)
+library(plyr)
+library(ithir)
+library(hydroGOF)
+library(ggplot2)
+library(ggsci)
+library(reshape2)
+library(ncdf4) 
+library(maptools) 
+library(terra)
+library(randomForest)
+library(caret)
+
+start_date <- as.Date("2016-06-01")
+end_date <- as.Date("2016-09-30")
+date_seq <- seq(from = start_date, to = end_date, by = "day")
+formatted_date_seq <- format(date_seq, "%Y%m%d")
+for(ss in 1:122){
+##GS-InG-LN
+
+path_GS_a<-"E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/4 参数的空间预测/2 多元随机森林预测各层参数/1高斯函数的参数合集/0-10cm/a"
+path_GS_b<-"E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/4 参数的空间预测/2 多元随机森林预测各层参数/1高斯函数的参数合集/0-10cm/b"
+path_GS_c<-"E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/4 参数的空间预测/2 多元随机森林预测各层参数/1高斯函数的参数合集/0-10cm/c"
+
+GS_a_file <- dir(path_GS_a, pattern = ".tif$", full.names = TRUE)
+GS_b_file <- dir(path_GS_b, pattern = ".tif$", full.names = TRUE)
+GS_c_file <- dir(path_GS_c, pattern = ".tif$", full.names = TRUE)
+
+GS_a<-raster(GS_a_file[ss])
+GS_b<-raster(GS_b_file[ss])
+GS_c<-raster(GS_c_file[ss])
+
+GS_a@data@names<-"GS_a"
+GS_b@data@names<-"GS_b"
+GS_c@data@names<-"GS_c"
+
+i_depth=5
+sm_sum_5_10<-GS_a*exp((((i_depth-GS_b)*(i_depth-GS_b))/(-GS_c*GS_c)))
+for(i_depth in 6:10){
+sm_temp_5_10<-GS_a*exp((((i_depth-GS_b)*(i_depth-GS_b))/(-GS_c*GS_c)))
+sm_sum_5_10<-sm_sum_5_10+sm_temp_5_10
+}
+sm_sum_5_10<-sm_sum_5_10/6
+
+
+path_InG_a<-"E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/4 参数的空间预测/2 多元随机森林预测各层参数/2逆高斯函数的参数合集/10-20cm/a"
+path_InG_b<-"E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/4 参数的空间预测/2 多元随机森林预测各层参数/2逆高斯函数的参数合集/10-20cm/b"
+path_InG_c<-"E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/4 参数的空间预测/2 多元随机森林预测各层参数/2逆高斯函数的参数合集/10-20cm/c"
+
+InG_a_file <- dir(path_InG_a, pattern = ".tif$", full.names = TRUE)
+InG_b_file <- dir(path_InG_b, pattern = ".tif$", full.names = TRUE)
+InG_c_file <- dir(path_InG_c, pattern = ".tif$", full.names = TRUE)
+
+InG_a<-raster(InG_a_file[ss])
+InG_b<-raster(InG_b_file[ss])
+InG_c<-raster(InG_c_file[ss])
+
+InG_a@data@names<-"InG_a"
+InG_b@data@names<-"InG_b"
+InG_c@data@names<-"InG_c"
+
+i_depth=10
+sm_sum_10_20<-2*InG_a-InG_a*exp((((i_depth-InG_b)*(i_depth-InG_b))/(-InG_c*InG_c)))
+for(i_depth in 11:20){
+sm_temp_10_20<-2*InG_a-InG_a*exp((((i_depth-InG_b)*(i_depth-InG_b))/(-InG_c*InG_c)))
+sm_sum_10_20<-sm_sum_10_20+sm_temp_10_20
+}
+sm_sum_10_20<-sm_sum_10_20/11
+
+path_LN_a<-"E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/4 参数的空间预测/2 多元随机森林预测各层参数/3线性函数的参数合集/20-40cm/b"
+path_LN_b<-"E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/4 参数的空间预测/2 多元随机森林预测各层参数/3线性函数的参数合集/20-40cm/a"
+
+LN_a_file <- dir(path_LN_a, pattern = ".tif$", full.names = TRUE)
+LN_b_file <- dir(path_LN_b, pattern = ".tif$", full.names = TRUE)
+
+LN_a<-raster(LN_a_file[ss])
+LN_b<-raster(LN_b_file[ss])
+
+LN_a@data@names<-"LN_a"
+LN_b@data@names<-"LN_b"
+
+i_depth=20
+sm_sum_20_40<-LN_a+i_depth*LN_b
+for(i_depth in 21:40){
+sm_temp_20_40<-LN_a+i_depth*LN_b
+sm_sum_20_40<-sm_sum_20_40+sm_temp_20_40
+}
+sm_sum_20_40<-sm_sum_20_40/21
+
+
+write_name_5_10<-paste("SM_5_10_",formatted_date_seq[ss],".tif", sep="")
+write_name_10_20<-paste("SM_10_20_",formatted_date_seq[ss],".tif", sep="")
+write_name_20_40<-paste("SM_20_40_",formatted_date_seq[ss],".tif", sep="")
+
+setwd("E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/6 深层预测/2 空间出图/5-10cm")
+writeRaster(sm_sum_5_10,write_name_5_10)
+setwd("E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/6 深层预测/2 空间出图/10-20cm")
+writeRaster(sm_sum_10_20,write_name_10_20)
+setwd("E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/6 深层预测/2 空间出图/20-40cm")
+writeRaster(sm_sum_20_40,write_name_20_40)
+
+print(paste("work", ss,"done"))
+}
+
+
+
+
+
+
+
+
