@@ -1,0 +1,415 @@
+###deep-layer soil moisture modeling
+library(sp)
+library(GA)
+library(lattice)
+library(rgdal)
+library(raster)
+library(maptools)
+library(shapefiles)
+library(corrplot)
+library(gstat)
+library(raster)
+library(automap)
+library(MASS)
+library(soiltexture)
+library(aqp)
+library(plyr)
+library(ithir)
+library(hydroGOF)
+library(ggplot2)
+library(ggsci)
+library(reshape2)
+library(ncdf4) 
+library(maptools) 
+library(terra)
+library(randomForest)
+library(caret)
+ubrmse<-function(a,b){
+(sum(((a-mean(a))-(b-mean(b)))^2)/length(a))^0.5
+}
+nse<-function(pre, obs){
+1-(sum((obs-pre)^2)/sum((obs-mean(obs))^2))
+}
+gs_func<-function(dfdf,depth){
+a<-dfdf[,1]
+b<-dfdf[,2]
+if(ncol(dfdf)==3){c<-dfdf[,3]}
+a*exp((((depth-b)*(depth-b))/(-c*c)))
+}
+
+inv_func<-function(dfdf,depth){
+d<-dfdf[,1]
+e<-dfdf[,2]
+if(ncol(dfdf)==3){f<-dfdf[,3]}
+2*d-d*exp((((depth-e)*(depth-e))/(-f*f)))
+}
+linear_func<-function(dfdf,depth){
+g<-dfdf[,1]
+h<-dfdf[,2]
+if(ncol(dfdf)==3){kk<-dfdf[,3]}
+g+depth*h
+}
+judge_func<-function(method){
+if(method=="GS"){return(gs_func)}
+if(method=="InG"){return(inv_func)}
+if(method=="LN"){return(linear_func)}
+}
+
+library(reticulate)
+use_condaenv("r-reticulate")
+py_config()
+sklearn <- import("sklearn")
+np <- import("numpy")
+
+
+df<-read.csv("Tibet_data_all.csv")
+
+df<-df[df$a_0_10<5&df$d_0_10<5,]
+df<-df[df$a_10_20<50&df$d_10_20<5,]
+df<-df[df$a_20_40<30&df$d_20_40<5,]
+df<-df[df$b_0_10>-10&df$b_0_10<30,]
+df<-df[df$b_0_10>-10&df$b_0_10<30,]
+#df<-df[df$b_0_10>-100&df$b_0_10<100,]
+df<-df[df$e_0_10>-100&df$e_0_10<100,]
+df<-df[df$e_10_20>-50&df$e_10_20<50,]
+df<-df[df$c_0_10<100,]
+df<-df[df$f_0_10<100,]
+df<-df[df$b_10_20>-300&df$b_10_20<100,]
+df<-df[df$c_10_20<100,]
+df<-df[df$f_10_20<100,]
+df<-df[df$f_20_40<100,]
+df<-df[df$c_20_40<500,]
+
+df$Network<-as.factor(df$Network)
+#df$Site<-as.factor(df$Site)
+
+k.process<-30
+seed=c(1:k.process)
+result_df<-data.frame()
+
+for (i.validation in 1:k.process){#-30 times
+#for (i.validation in 1:2){
+#i.validation=1
+#data split
+
+para_pre<-{}
+para_obs<-{}#暂时用不上
+df_1<-subset(df,Network=="Naqu")
+df_2<-subset(df,Network=="Pagri")
+df_1$Site<-as.factor(df_1$Site)
+df_2$Site<-as.factor(df_2$Site)
+site_level_1<-levels(df_1$Site)
+site_level_2<-levels(df_2$Site)
+
+set.seed(seed[i.validation])
+index_1<-sample(1:length(site_level_1),replace=F,0.6*length(site_level_1))
+index_2<-sample(1:length(site_level_2),replace=F,0.6*length(site_level_2))
+train_site_1<-site_level_1[index_1]
+train_site_2<-site_level_2[index_2]
+test_site_1<-site_level_1[-index_1]
+test_site_2<-site_level_2[-index_2]
+train_site<-c(train_site_1,train_site_2)
+test_site<-c(test_site_1,test_site_2)
+df_train<- subset(df, Site %in% train_site)
+df_test<- subset(df,Site %in% test_site)
+
+##modeling start----------------------------------
+##（1） 0-10cm
+train_x<-as.matrix(df_train[,9:23])
+train_y<-as.matrix(df_train[,24:26])##修改Y
+y_name<-colnames(train_y)
+MultiOutputRegressor <- sklearn$multioutput$MultiOutputRegressor
+RandomForestRegressor <- sklearn$ensemble$RandomForestRegressor
+base_regressor <- RandomForestRegressor(n_estimators = as.integer(300), 
+                                                                         max_depth = as.integer(10),max_features="sqrt")
+multi_output_model <- MultiOutputRegressor(base_regressor)
+multi_output_model$fit(train_x, train_y)
+test_x<-as.matrix(df_test[,9:23])
+obs_test_y<-as.matrix(df_test[,colnames(train_y)])
+pre_test_y<- multi_output_model$predict(test_x)
+colnames(pre_test_y)<-y_name
+para_pre<-cbind(para_pre,pre_test_y)
+para_obs<-cbind(para_obs,obs_test_y)
+
+##（2） 10-20cm
+train_x<-as.matrix(df_train[,9:23])
+train_y<-as.matrix(df_train[,32:34])##修改Y
+y_name<-colnames(train_y)
+MultiOutputRegressor <- sklearn$multioutput$MultiOutputRegressor
+RandomForestRegressor <- sklearn$ensemble$RandomForestRegressor
+base_regressor <- RandomForestRegressor(n_estimators = as.integer(300), 
+                                                                         max_depth = as.integer(10),max_features="sqrt")
+multi_output_model <- MultiOutputRegressor(base_regressor)
+multi_output_model$fit(train_x, train_y)
+test_x<-as.matrix(df_test[,9:23])
+obs_test_y<-as.matrix(df_test[,colnames(train_y)])
+pre_test_y<- multi_output_model$predict(test_x)
+colnames(pre_test_y)<-y_name
+para_pre<-cbind(para_pre,pre_test_y)
+para_obs<-cbind(para_obs,obs_test_y)
+
+##（3） 20-40cm
+train_x<-as.matrix(df_train[,9:23])
+train_y<-as.matrix(df_train[,40:42])##修改Y
+y_name<-colnames(train_y)
+MultiOutputRegressor <- sklearn$multioutput$MultiOutputRegressor
+RandomForestRegressor <- sklearn$ensemble$RandomForestRegressor
+base_regressor <- RandomForestRegressor(n_estimators = as.integer(300), 
+                                                                         max_depth = as.integer(10),max_features="sqrt")
+multi_output_model <- MultiOutputRegressor(base_regressor)
+multi_output_model$fit(train_x, train_y)
+test_x<-as.matrix(df_test[,9:23])
+obs_test_y<-as.matrix(df_test[,colnames(train_y)])
+pre_test_y<- multi_output_model$predict(test_x)
+colnames(pre_test_y)<-y_name
+para_pre<-cbind(para_pre,pre_test_y)
+para_obs<-cbind(para_obs,obs_test_y)
+
+##（4) 0-10cm
+train_x<-as.matrix(df_train[,9:23])
+train_y<-as.matrix(df_train[,27:29])##修改Y
+y_name<-colnames(train_y)
+MultiOutputRegressor <- sklearn$multioutput$MultiOutputRegressor
+RandomForestRegressor <- sklearn$ensemble$RandomForestRegressor
+base_regressor <- RandomForestRegressor(n_estimators = as.integer(300), 
+                                                                         max_depth = as.integer(10),max_features="sqrt")
+multi_output_model <- MultiOutputRegressor(base_regressor)
+multi_output_model$fit(train_x, train_y)
+test_x<-as.matrix(df_test[,9:23])
+obs_test_y<-as.matrix(df_test[,colnames(train_y)])
+pre_test_y<- multi_output_model$predict(test_x)
+colnames(pre_test_y)<-y_name
+para_pre<-cbind(para_pre,pre_test_y)
+para_obs<-cbind(para_obs,obs_test_y)
+
+##（5） 10-20cm
+train_x<-as.matrix(df_train[,9:23])
+train_y<-as.matrix(df_train[,35:37])##修改Y
+y_name<-colnames(train_y)
+MultiOutputRegressor <- sklearn$multioutput$MultiOutputRegressor
+RandomForestRegressor <- sklearn$ensemble$RandomForestRegressor
+base_regressor <- RandomForestRegressor(n_estimators = as.integer(300), 
+                                                                         max_depth = as.integer(10),max_features="sqrt")
+multi_output_model <- MultiOutputRegressor(base_regressor)
+multi_output_model$fit(train_x, train_y)
+test_x<-as.matrix(df_test[,9:23])
+obs_test_y<-as.matrix(df_test[,colnames(train_y)])
+pre_test_y<- multi_output_model$predict(test_x)
+colnames(pre_test_y)<-y_name
+para_pre<-cbind(para_pre,pre_test_y)
+para_obs<-cbind(para_obs,obs_test_y)
+
+##（6） 20-40cm
+train_x<-as.matrix(df_train[,9:23])
+train_y<-as.matrix(df_train[,43:45])##修改Y
+y_name<-colnames(train_y)
+MultiOutputRegressor <- sklearn$multioutput$MultiOutputRegressor
+RandomForestRegressor <- sklearn$ensemble$RandomForestRegressor
+base_regressor <- RandomForestRegressor(n_estimators = as.integer(300), 
+                                                                         max_depth = as.integer(10),max_features="sqrt")
+multi_output_model <- MultiOutputRegressor(base_regressor)
+multi_output_model$fit(train_x, train_y)
+test_x<-as.matrix(df_test[,9:23])
+obs_test_y<-as.matrix(df_test[,colnames(train_y)])
+pre_test_y<- multi_output_model$predict(test_x)
+colnames(pre_test_y)<-y_name
+para_pre<-cbind(para_pre,pre_test_y)
+para_obs<-cbind(para_obs,obs_test_y)
+
+##（7） 0-10cm
+train_x<-as.matrix(df_train[,9:23])
+train_y<-as.matrix(df_train[,30:31])##修改Y
+y_name<-colnames(train_y)
+MultiOutputRegressor <- sklearn$multioutput$MultiOutputRegressor
+RandomForestRegressor <- sklearn$ensemble$RandomForestRegressor
+base_regressor <- RandomForestRegressor(n_estimators = as.integer(300), 
+                                                                         max_depth = as.integer(10),max_features="sqrt")
+multi_output_model <- MultiOutputRegressor(base_regressor)
+multi_output_model$fit(train_x, train_y)
+test_x<-as.matrix(df_test[,9:23])
+obs_test_y<-as.matrix(df_test[,colnames(train_y)])
+pre_test_y<- multi_output_model$predict(test_x)
+colnames(pre_test_y)<-y_name
+para_pre<-cbind(para_pre,pre_test_y)
+para_obs<-cbind(para_obs,obs_test_y)
+
+##（8） 10-20cm
+train_x<-as.matrix(df_train[,9:23])
+train_y<-as.matrix(df_train[,38:39])##修改Y
+y_name<-colnames(train_y)
+MultiOutputRegressor <- sklearn$multioutput$MultiOutputRegressor
+RandomForestRegressor <- sklearn$ensemble$RandomForestRegressor
+base_regressor <- RandomForestRegressor(n_estimators = as.integer(300), 
+                                                                         max_depth = as.integer(10),max_features="sqrt")
+multi_output_model <- MultiOutputRegressor(base_regressor)
+multi_output_model$fit(train_x, train_y)
+test_x<-as.matrix(df_test[,9:23])
+obs_test_y<-as.matrix(df_test[,colnames(train_y)])
+pre_test_y<- multi_output_model$predict(test_x)
+colnames(pre_test_y)<-y_name
+para_pre<-cbind(para_pre,pre_test_y)
+para_obs<-cbind(para_obs,obs_test_y)
+
+##（9） 20-40cm
+train_x<-as.matrix(df_train[,9:23])
+train_y<-as.matrix(df_train[,46:47])##修改Y
+y_name<-colnames(train_y)
+MultiOutputRegressor <- sklearn$multioutput$MultiOutputRegressor
+RandomForestRegressor <- sklearn$ensemble$RandomForestRegressor
+base_regressor <- RandomForestRegressor(n_estimators = as.integer(300), 
+                                                                         max_depth = as.integer(10),max_features="sqrt")
+multi_output_model <- MultiOutputRegressor(base_regressor)
+multi_output_model$fit(train_x, train_y)
+test_x<-as.matrix(df_test[,9:23])
+obs_test_y<-as.matrix(df_test[,colnames(train_y)])
+pre_test_y<- multi_output_model$predict(test_x)
+colnames(pre_test_y)<-y_name
+para_pre<-cbind(para_pre,pre_test_y)
+para_obs<-cbind(para_obs,obs_test_y)
+print(paste("model",i.validation,"finished"))
+#modeling end
+GS_para<-para_pre[,1:9]
+InG_para<-para_pre[,10:18]
+LN_para<-para_pre[,19:24]
+
+para_0_10<-para_pre[,c(1:3,10:12,19:20)]
+para_10_20<-para_pre[,c(4:6,13:15,21:22)]
+para_20_40<-para_pre[,c(7:9,16:18,23:24)]
+
+##27methods
+method<-c("GS","InG","LN")
+GS<-c(1:3)
+InG<-c(4:6)
+LN<-c(7:8)
+
+
+result_all<-data.frame()
+for(i in 1:3){
+          for(j in 1:3){
+                   for(k in 1:3){
+
+method_name_temp<-paste(method[i],"_",method[j],"_",method[k],sep="")
+para_i<-para_0_10[,get(method[i])]
+para_j<-para_10_20[,get(method[j])]
+para_k<-para_20_40[,get(method[k])]
+
+depth_i<-c(5:10)
+depth_j<-c(10:20)
+depth_k<-c(20:40)
+
+
+final_func_i<-judge_func(method[i])
+final_func_j<-judge_func(method[j])
+final_func_k<-judge_func(method[k])
+
+pre_sm_result<-{}
+##计算均值
+for(i.depth in 5:9){
+temp_pre<-as.data.frame(final_func_i(para_i,i.depth))
+colnames(temp_pre)<-paste("sm_",i.depth,"cm",sep="")
+temp_pre<-as.matrix(temp_pre)
+pre_sm_result<-cbind(pre_sm_result,temp_pre)
+}
+i.depth=10
+temp_pre_1<-as.data.frame(final_func_i(para_i,i.depth))
+temp_pre_1<-as.matrix(temp_pre_1)
+j.depth=10
+temp_pre_2<-as.data.frame(final_func_j(para_j,j.depth))
+temp_pre_2<-as.matrix(temp_pre_2)
+temp_pre<-as.data.frame((temp_pre_1+temp_pre_2)/2)
+colnames(temp_pre)<-"sm_10cm"
+pre_sm_result<-cbind(pre_sm_result,temp_pre)
+
+for(j.depth in 11:19){
+temp<-as.data.frame(final_func_j(para_j,j.depth))
+colnames(temp)<-paste("sm_",j.depth,"cm",sep="")
+temp<-as.matrix(temp)
+pre_sm_result<-cbind(pre_sm_result,temp)
+}
+j.depth=20
+temp_pre_1<-as.data.frame(final_func_j(para_j,j.depth))
+temp_pre_1<-as.matrix(temp_pre_1)
+k.depth=20
+temp_pre_2<-as.data.frame(final_func_k(para_k,k.depth))
+temp_pre_2<-as.matrix(temp_pre_2)
+temp_pre<-as.data.frame((temp_pre_1+temp_pre_2)/2)
+colnames(temp_pre)<-"sm_20cm"
+pre_sm_result<-cbind(pre_sm_result,temp_pre)
+
+for(k.depth in 21:40){
+temp<-as.data.frame(final_func_k(para_k,k.depth))
+colnames(temp)<-paste("sm_",k.depth,"cm",sep="")
+temp<-as.matrix(temp)
+pre_sm_result<-cbind(pre_sm_result,temp)
+}
+pre_sm_5_10cm<-rowMeans(pre_sm_result[,1:6])
+pre_sm_10_20cm<-rowMeans(pre_sm_result[,6:16])
+pre_sm_20_40cm<-rowMeans(pre_sm_result[,16:36])
+pre_sm_5_40cm<-rowMeans(pre_sm_result)
+
+df_test_all_depth<-cbind(df_test[,2],df_test[,3],df_test[,4])
+df_test_all_depth<-as.data.frame(rowMeans(df_test_all_depth))
+colnames(df_test_all_depth)<-"obs_all"
+
+test_used<-cbind(df_test[,c(2:4,6:8)],obs_all=df_test_all_depth ,pre_10cm=pre_sm_5_10cm,
+                               pre_20cm=pre_sm_10_20cm,pre_40cm=pre_sm_20_40cm,pre_all=pre_sm_5_40cm)
+
+me_10<-me(test_used$pre_10cm,test_used$obs_10cm)
+me_20<-me(test_used$pre_20cm,test_used$obs_20cm)
+me_40<-me(test_used$pre_40cm,test_used$obs_40cm)
+me_all<-me(test_used$pre_all,test_used$obs_all)
+
+rmse_10<-rmse(test_used$pre_10cm,test_used$obs_10cm)
+rmse_20<-rmse(test_used$pre_20cm,test_used$obs_20cm)
+rmse_40<-rmse(test_used$pre_40cm,test_used$obs_40cm)
+rmse_all<-rmse(test_used$pre_all,test_used$obs_all)
+
+ubrmse_10<-ubrmse(test_used$pre_10cm,test_used$obs_10cm)
+ubrmse_20<-ubrmse(test_used$pre_20cm,test_used$obs_20cm)
+ubrmse_40<-ubrmse(test_used$pre_40cm,test_used$obs_40cm)
+ubrmse_all<-ubrmse(test_used$pre_all,test_used$obs_all)
+
+nse_10<-{}
+nse_20<-{}
+nse_40<-{}
+nse_all<-{}
+
+test_used_site<-levels(as.factor(test_used$Site))
+for(NSE_count in 1:length(test_used_site)){
+test_used_temp<-subset(test_used,Site== test_used_site[ NSE_count])
+nse_10<-c(nse_10,nse(test_used_temp$pre_10cm,test_used_temp$obs_10cm))
+nse_20<-c(nse_20,nse(test_used_temp$pre_20cm,test_used_temp$obs_20cm))
+nse_40<-c(nse_40,nse(test_used_temp$pre_40cm,test_used_temp$obs_40cm))
+nse_all<-c(nse_all,nse(test_used_temp$pre_all,test_used_temp$obs_all))
+}
+nse_10<-median(nse_10)
+nse_20<-median(nse_20)
+nse_40<-median(nse_40)
+nse_all<-median(nse_all)
+
+result_all_temp<-data.frame(method=method_name_temp,me_5_10=me_10,me_10_20=me_20,me_20_40=me_40,
+                                                 rmse_5_10=rmse_10,rmse_10_20=rmse_20,rmse_20_40=rmse_40,
+                                                 ubrmse_5_10=ubrmse_10,ubrmse_10_20=ubrmse_20,ubrmse_20_40=ubrmse_40,
+                                                 nse_5_10=nse_10,nse_10_20=nse_20,nse_20_40=nse_40,
+                                                 me_5_40=me_all,rmse_5_40=rmse_all,ubrmse_5_40=ubrmse_all,nse_5_40=nse_all)
+result_all<-rbind(result_all,result_all_temp)
+write_name<-paste("result")
+
+}##------1层
+}##------2层
+}##------3层
+result_df<-rbind(result_df,result_all)
+}
+
+df_table<-result_df
+df_table$method<-as.factor(df_table$method)
+method_level<-levels(df_table$method)
+
+final_result_table<-{}
+for(xx in 1:length(method_level)){
+df_table_temp<-subset(df_table,method==method_level[xx])
+df_table_temp_2<-c(Method=method_level[xx],colMeans(as.matrix(df_table_temp[,-1])))
+final_result_table<-rbind(final_result_table,df_table_temp_2)
+}
+write.csv(final_result_table,"final_result_table_0605.csv")
+
