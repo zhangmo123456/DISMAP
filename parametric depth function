@@ -9,18 +9,18 @@ r2 <- function(predicted,actual) {
   r_squared <- summary(model)$r.squared
   return(r_squared)
 }
-setwd("E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/2 data/1 原位观测")
+
 data<-read.csv("SM_Tibet_spline.csv")
 data<-na.omit(data)
 result<-data.frame()
 
-for (i in 1: nrow(data)){#-------每个站点建模【分别使用三个函数】-----0-10 cm------
+for (i in 1: nrow(data)){
 #for (i in 1: 535){
 df<-data[i,]
 sm_data<-as.numeric(df[1:10])##------0-10cm的土壤水分---------
 df_all<-data.frame(sm=sm_data,depth=c(1:10))
 
-##（1）高斯函数----------------------------------------------------
+##（1）
 tell=0
 tryCatch({
 start_gas<-list(a=max(df_all$sm),
@@ -48,7 +48,7 @@ b<-0
 c<-0
 pre_gas<-rep(0,length(depth))
 }
-##（2）逆高斯函数----------------------------------------------------
+##（2）
 
 tell=0
 tryCatch({
@@ -78,7 +78,7 @@ f<-0
 pre_invgas<-rep(0,length(depth))
 }
 
-##（3）线性函数----------------------------------------------------
+##（3）
 
 tell=0
 tryCatch({
@@ -126,7 +126,6 @@ plot<-ggplot() +
   guides(color=guide_legend(title="Depth function"))
   plot
 
-##记录获得的参数，计算每个函数的拟合精度RMSE和R2，以及哪个是最优的
 para_temp<-c(a,b,c,d,e,f,g,h)
 RMSE_temp<-c(rmse(pre_gas,sm_data),rmse(pre_invgas,sm_data),rmse(pre_linear,sm_data))
 R2_temp<-c(r2(pre_gas,sm_data),r2(pre_invgas,sm_data),r2(pre_linear,sm_data))
@@ -165,13 +164,58 @@ if(i%%500==0){print( 100*i/nrow(data))}
 setwd("C:/Users/dell/Desktop")
 write.csv(result,"para_0_10.csv")
 
+##analysis example 1
+df<-read.csv("para_20_40.csv")
+site<-read.csv("SM_Tibet_spline.csv")
+site<-na.omit(site)
+df$network<-site$Network
+df<-subset(df,network=="Pagri")
 
+rmse_gas<-mean(df$RMSE_gas)
+rmse_invgas<-mean(df$RMSE_invgas)
+rmse_linear<-mean(df$RMSE_linear)
 
+R2_gas<-mean(df$R2_gas)
+R2_invgas<-mean(df$R2_invgas)
+R2_linear<-mean(df$R2_linear)
 
+ratio_gas<-100*sum(df$Gaussian)/nrow(df)
+ratio_invgas<-100*sum(df$Inverse.Gaussian)/nrow(df)
+ratio_linear<-100*sum(df$Linear)/nrow(df)
 
+all<-round(c(rmse_gas,R2_gas,rmse_invgas,R2_invgas,rmse_linear,R2_linear,ratio_gas,ratio_invgas,ratio_linear),3)
 
+##analysis example 2
 
+library(ggplot2)
+df<-read.csv("para_20_40.csv")
+site<-read.csv("SM_Tibet_spline.csv")
+site<-na.omit(site)
+df$network<-site$Network
+#df<-subset(df,network=="Pagri")
 
+R2_gas<-df$R2_gas
+R2_invgas<-df$R2_invgas
+R2_linear<-df$R2_linear
 
+data1<-data.frame(value=R2_gas, Function = "bGaussian")
+data2<-data.frame(value=R2_invgas, Function = "aInverse Gaussian")
+data3<-data.frame(value=R2_linear, Function = "cLinear")
+data <- rbind(data2, data1, data3)
+colors <- c("aInverse Gaussian" = "#FB8C62","bGaussian" = "#0E8585",  "cLinear" = "#A8CFE8")
 
+ggplot(data, aes(x = value, fill = Function, color = Function)) +
+  geom_histogram(aes(y = ..density..), binwidth = 0.05, alpha = 0.8, position = "identity") +
+  labs(title = "(i) 20-40 cm of all sites", 
+       x = "", y = "Density") +
+scale_fill_manual(values = colors) +
+  scale_color_manual(values = colors) +
+ theme_light()+
+  theme(legend.position = "none",
+    axis.title = element_text(size=12, color="black"),
+    axis.text = element_text(size=12, color="black"),
+    legend.text = element_text(size=12, color="black"),
+    legend.title = element_text(size=12, color="black")
+  ) 
+ggsave("ib.jpg",dpi = 600,width = 6,height = 5)
 
