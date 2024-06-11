@@ -1,0 +1,122 @@
+#Spatial prediction of depth parameters using the multi-output regressor
+
+library(sp)
+library(GA)
+library(lattice)
+library(rgdal)
+library(raster)
+library(maptools)
+library(shapefiles)
+library(corrplot)
+library(gstat)
+library(raster)
+library(automap)
+library(MASS)
+library(soiltexture)
+library(aqp)
+library(plyr)
+library(ithir)
+library(hydroGOF)
+library(ggplot2)
+library(ggsci)
+library(reshape2)
+library(ncdf4) 
+library(maptools) 
+library(terra)
+library(randomForest)
+library(caret)
+library(reticulate)# 
+use_condaenv("r-reticulate")# 
+py_config()# 
+sklearn <- import("sklearn")# 
+np <- import("numpy")
+
+start_date <- as.Date("2016-06-01")
+end_date <- as.Date("2016-09-30")
+date_seq <- seq(from = start_date, to = end_date, by = "day")
+formatted_date_seq <- format(date_seq, "%Y%m%d")
+
+
+point<-read.csv("SM_Tibet_spline_EC_0_10.csv")
+point<-point[point$a<1&point$b<40&point$b>0&point$c<30,]
+trainX<-as.matrix(point[,49:63])
+trainY<-as.matrix(point[,64:66])
+#aa<-Sys.time()
+MultiOutputRegressor <- sklearn$multioutput$MultiOutputRegressor
+RandomForestRegressor <- sklearn$ensemble$RandomForestRegressor
+base_regressor <- RandomForestRegressor(n_estimators = as.integer(300), max_depth = as.integer(10),max_features="sqrt")
+#base_regressor <- RandomForestRegressor(n_estimators = as.integer(300), max_features="sqrt")
+
+multi_output_model <- MultiOutputRegressor(base_regressor)
+multi_output_model$fit(trainX, trainY)
+#Sys.time()-aa
+
+##
+for(ss in 1:122){
+#
+ECfile_1km_no_time <- dir(path, pattern = ".tif$", full.names = TRUE)
+for(i in 1 : length(ECfile_1km_no_time)){
+  assign(paste("ec", i, sep = ""),raster(ECfile_1km_no_time[i]))
+}
+ec_raster_1km<-ec1
+for(j in 2: length(ECfile_1km_no_time)){
+  ec_raster_1km<-stack(ec_raster_1km,get(paste("ec",j,sep="")))
+}
+#合并1km其他逐日环境变量--------------------------------------------------------------------------------------------
+path.lstd.1km<-"E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/2 data/4 EC/ECdata_1km/EC_with_Time/LST_D"
+lstd.file <- dir(path.lstd.1km, pattern = ".tif$", full.names = TRUE)
+LST_D<-raster(lstd.file[ss])
+LST_D@data@names<-"LST_D"
+ec_raster_1km<-stack(ec_raster_1km,LST_D)
+
+path.lstn.1km<-"E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/2 data/4 EC/ECdata_1km/EC_with_Time/LST_N"
+lstn.file <- dir(path.lstn.1km, pattern = ".tif$", full.names = TRUE)
+LST_N<-raster(lstn.file[ss])
+LST_N@data@names<-"LST_N"
+ec_raster_1km<-stack(ec_raster_1km,LST_N)
+
+path.ndvi.1km<-"E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/2 data/4 EC/ECdata_1km/EC_with_Time/NDVI"
+ndvi.file <- dir(path.ndvi.1km, pattern = ".tif$", full.names = TRUE)
+NDVI<-raster(ndvi.file[ss])
+NDVI@data@names<-"NDVI"
+ec_raster_1km<-stack(ec_raster_1km,NDVI)
+
+path.prcp.1km<-"E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/2 data/4 EC/ECdata_1km/EC_with_Time/Prcp"
+prcp.file <- dir(path.prcp.1km, pattern = ".tif$", full.names = TRUE)
+Prcp<-raster(prcp.file[ss])
+Prcp@data@names<-"Prcp"
+ec_raster_1km<-stack(ec_raster_1km,Prcp)
+
+path.smpre.1km<-"E:/000_论文写作/2_参数函数分段拟合-空间降尺度/work/5 表层降尺度/result"
+smpre.file <- dir(path.smpre.1km, pattern = ".tif$", full.names = TRUE)
+SMpre<-raster(smpre.file[ss])
+SMpre@data@names<-"SMpre"
+ec_raster_1km<-stack(ec_raster_1km,SMpre)
+
+X_test<- as.matrix(getValues(ec_raster_1km))
+non_na_indices <- complete.cases(X_test)
+X_test_non_na <- X_test[non_na_indices, ]
+y_pred_non_na <- multi_output_model$predict(X_test_non_na)
+
+print("predict done")
+y_pred <- matrix(NA, nrow = nrow(X_test), ncol = ncol(y_pred_non_na))
+y_pred[non_na_indices, ] <- y_pred_non_na
+
+
+ncol_raster<-ec_raster_1km@ncols
+nrow_raster<-ec_raster_1km@nrows
+colnames(y_pred)<-colnames(trainY)
+
+raster_name<-c("G_α_","G_β_","G_γ_")##
+for (i in 1:ncol(y_pred)) {
+  layer_matrix <- matrix(y_pred[, i], nrow = nrow_raster, ncol = ncol_raster, byrow = TRUE)
+  layer <- raster(layer_matrix)
+  extent(layer) <- extent(ec_raster_1km)
+  crs(layer) <- crs(ec_raster_1km)
+  write_name_temp<-paste(raster_name[i],formatted_date_seq[ss],".tif",sep="")
+  writeRaster( layer,write_name_temp)
+}
+print(ss)
+}
+
+
