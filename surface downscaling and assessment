@@ -122,4 +122,105 @@ print(paste("Mission complete for ",as.character(ss),
         " (",as.character(round(ss/length(SM_file_36km)*100,1)),"%)",sep=""))
 }
 
+#assessment example
+library(sp)
+library(GA)
+library(lattice)
+library(rgdal)
+library(raster)
+library(maptools)
+library(shapefiles)
+library(corrplot)
+library(gstat)
+library(raster)
+library(automap)
+library(MASS)
+library(soiltexture)
+library(aqp)
+library(plyr)
+library(ithir)
+library(hydroGOF)
+library(ggplot2)
+library(ggsci)
+library(reshape2)
+library(ncdf4) 
+library(maptools) 
+library(terra)
+library(randomForest)
+library(caret)
+ubrmse<-function(a,b){
+(sum(((a-mean(a))-(b-mean(b)))^2)/length(a))^0.5
+}
+nse<-function(pre, obs){
+1-(sum((obs-pre)^2)/sum((obs-mean(obs))^2))
+}
+
+
+df_Naqu<-read.csv("Naqu_vali.csv")
+df_Pagri<-read.csv("Pagri_vali.csv")
+df_uHRB<-read.csv("uHRB_vali.csv")
+df_all<-rbind(df_Naqu,df_Pagri,df_uHRB)
+
+df_Naqu<-na.omit(df_Naqu)
+df_Pagri<-na.omit(df_Pagri)
+df_uHRB<-na.omit(df_uHRB)
+df_all<-na.omit(df_all)
+
+df_Naqu$Site<-as.factor(df_Naqu$Site)
+df_Pagri$Site<-as.factor(df_Pagri$Site)
+df_uHRB$Site<-as.factor(df_uHRB$Site)
+df_all$Site<-as.factor(df_all$Site)
+
+length_Naqu<-length(levels(df_Naqu$Site))
+length_Pagri<-length(levels(df_Pagri$Site))
+length_uHRB<-length(levels(df_uHRB$Site))
+length_all<-length(levels(df_all$Site))
+
+
+indicator_Naqu<-data.frame(ME=0,RMSE=0,ubRMSE=0,NSE=0,Site=0)
+indicator_Pagri<-data.frame(ME=0,RMSE=0,ubRMSE=0,NSE=0,Site=0)
+indicator_uHRB<-data.frame(ME=0,RMSE=0,ubRMSE=0,NSE=0,Site=0)
+indicator_all<-data.frame(ME=0,RMSE=0,ubRMSE=0,NSE=0,Site=0)
+
+
+for(i in 1:length_Naqu){
+vali_site<-subset(df_Naqu,Site==levels(df_Naqu$Site)[i])
+me_temp<-me(vali_site$Pre,vali_site$Obs)
+rmse_temp<-rmse(vali_site$Pre,vali_site$Obs)
+ubrmse_temp<-ubrmse(vali_site$Pre,vali_site$Obs)
+nse_temp<-nse(vali_site$Pre,vali_site$Obs)
+indicator_Naqu<-rbind(indicator_Naqu,c(me_temp,rmse_temp,ubrmse_temp,nse_temp,levels(df_Naqu$Site)[i]))
+}
+
+for(i in 1:length_Pagri){
+vali_site<-subset(df_Pagri,Site==levels(df_Pagri$Site)[i])
+me_temp<-me(vali_site$Pre,vali_site$Obs)
+rmse_temp<-rmse(vali_site$Pre,vali_site$Obs)
+ubrmse_temp<-ubrmse(vali_site$Pre,vali_site$Obs)
+nse_temp<-nse(vali_site$Pre,vali_site$Obs)
+indicator_Pagri<-rbind(indicator_Pagri,c(me_temp,rmse_temp,ubrmse_temp,nse_temp,levels(df_Pagri$Site)[i]))
+}
+
+for(i in 1:length_uHRB){
+vali_site<-subset(df_uHRB,Site==levels(df_uHRB$Site)[i])
+me_temp<-me(vali_site$Pre,vali_site$Obs)
+rmse_temp<-rmse(vali_site$Pre,vali_site$Obs)
+ubrmse_temp<-ubrmse(vali_site$Pre,vali_site$Obs)
+nse_temp<-nse(vali_site$Pre,vali_site$Obs)
+indicator_uHRB<-rbind(indicator_uHRB,c(me_temp,rmse_temp,ubrmse_temp,nse_temp,levels(df_uHRB$Site)[i]))
+}
+
+for(i in 1:length_all){
+vali_site<-subset(df_all,Site==levels(df_all$Site)[i])
+me_temp<-me(vali_site$Pre,vali_site$Obs)
+rmse_temp<-rmse(vali_site$Pre,vali_site$Obs)
+ubrmse_temp<-ubrmse(vali_site$Pre,vali_site$Obs)
+nse_temp<-nse(vali_site$Pre,vali_site$Obs)
+indicator_all<-rbind(indicator_all,c(me_temp,rmse_temp,ubrmse_temp,nse_temp,levels(df_all$Site)[i]))
+}
+indicator_Naqu<-indicator_Naqu[-1,]
+indicator_Pagri<-indicator_Pagri[-1,]
+indicator_uHRB<-indicator_uHRB[-1,]
+indicator_all<-indicator_all[-1,]
+
 
